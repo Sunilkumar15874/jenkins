@@ -1,0 +1,80 @@
+# .github/workflows/cicd.yml
+
+name: CI/CD Pipeline for Java Maven Web Application
+
+on:
+  push:
+    branches:
+      - main  # Or your main branch name
+    tags:
+      - 'v*' # Trigger on tags like v1.0, v1.1, etc.
+
+  pull_request:
+    branches:
+      - main # Or your main branch name
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up JDK 17 # Or your preferred JDK version
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin' # Or 'adopt' or 'zulu'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Build with Maven
+        run: mvn clean package -DskipTests # -DskipTests to skip unit tests during build
+
+      - name: Upload artifact (Optional - for deployments)
+        uses: actions/upload-artifact@v3
+        with:
+          name: webapp-artifact # Name of your artifact
+          path: target/*.war # Path to your WAR file (adjust as needed)
+          if-no-files: error # Fail if no artifact is found
+
+  deploy:
+    needs: build # This job depends on the build job
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') # Only deploy on tags (releases)
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: webapp-artifact
+
+      - name: Deploy to Server (Example using SSH)
+        uses: appleboy/ghaction-ssh@master
+        with:
+          host: ${{ secrets.SERVER_IP }} # Your server IP
+          username: ${{ secrets.SERVER_USERNAME }} # Your server username
+          key: ${{ secrets.SERVER_PRIVATE_KEY }} # Your server's private key (securely stored in secrets)
+          script: |
+            # Example deployment script (adapt as needed)
+            sudo systemctl stop your-webapp-service # Stop the current service
+            cd /path/to/your/webapp/directory # Directory on the server
+            rm your-webapp.war # Remove old WAR file
+            cp webapp-artifact/*.war . # Copy the new WAR file
+            sudo systemctl start your-webapp-service # Start the service
+            # Add other deployment steps as required (e.g., database migrations)
+
+
+
+      # Alternative deployment (example using scp and ssh):
+      # - name: Deploy to Server (Alternative Example)
+      #   run: |
+      #     scp -o StrictHostKeyChecking=no -i ${{ secrets.SERVER_PRIVATE_KEY }} ./webapp-artifact/*.war ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_IP }}:/path/to/your/webapp/directory
+      #     ssh -o StrictHostKeyChecking=no -i ${{ secrets.SERVER_PRIVATE_KEY }} ${{ secrets.SERVER_USERNAME }}@${{ secrets.SERVER_IP }} 'sudo systemctl restart your-webapp-service'
